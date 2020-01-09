@@ -114,10 +114,12 @@ resource "null_resource" "apply_configmap_auth" {
       install_kubectl=${var.install_kubectl}
       if [[ "$install_kubectl" = true ]] ; then
           echo 'Installing kubectl...'
-          mkdir -p ${local.external_packages_install_path}
-          cd ${local.external_packages_install_path}
+          # mkdir -p ${local.external_packages_install_path}
+          # cd ${local.external_packages_install_path}
           curl -LO https://storage.googleapis.com/kubernetes-release/release/${local.kubectl_version}/bin/linux/amd64/kubectl
           chmod +x ./kubectl
+          cp ./kubectl /usr/local/bin
+
           export PATH=$PATH:${local.external_packages_install_path}
           echo 'Installed kubectl'
           which kubectl
@@ -127,16 +129,24 @@ resource "null_resource" "apply_configmap_auth" {
       aws_cli_assume_role_session_name=${var.aws_cli_assume_role_session_name}
       if [[ -n "$aws_cli_assume_role_arn" && -n "$aws_cli_assume_role_session_name" ]] ; then
         echo 'Assuming role ${var.aws_cli_assume_role_arn} ...'
-        mkdir -p ${local.external_packages_install_path}
-        cd ${local.external_packages_install_path}
+        # mkdir -p ${local.external_packages_install_path}
+        # cd ${local.external_packages_install_path}
         curl -L https://github.com/stedolan/jq/releases/download/jq-${var.jq_version}/jq-linux64 -o jq
         chmod +x ./jq
         source <(aws --output json sts assume-role --role-arn "$aws_cli_assume_role_arn" --role-session-name "$aws_cli_assume_role_session_name"  | jq -r  '.Credentials | @sh "export AWS_SESSION_TOKEN=\(.SessionToken)\nexport AWS_ACCESS_KEY_ID=\(.AccessKeyId)\nexport AWS_SECRET_ACCESS_KEY=\(.SecretAccessKey) "')
         echo 'Assumed role ${var.aws_cli_assume_role_arn}'
       fi
-
+      echo "Identity before update-kubeconfig"
+      aws sts get-caller-identity
+      curl  -L https://amazon-eks.s3-us-west-2.amazonaws.com/1.14.6/2019-08-22/bin/linux/amd64/aws-iam-authenticator -o aws-iam-authenticator
+      chmod +x ./aws-iam-authenticator
+      cp ./aws-iam-authenticator /usr/local/bin
+      which aws-iam-authenticator
       echo 'Applying Auth ConfigMap with kubectl...'
       aws eks update-kubeconfig --name=${local.cluster_name} --region=${var.region} --kubeconfig=${var.kubeconfig_path} ${var.aws_eks_update_kubeconfig_additional_arguments}
+      unset AWS_ACCESS_KEY_ID
+      unset AWS_ACCESS_KEY_ID
+      unset AWS_SECRET_ACCESS_KEY
       kubectl version --kubeconfig ${var.kubeconfig_path}
       kubectl apply -f ${local.configmap_auth_file} --kubeconfig ${var.kubeconfig_path}
       echo 'Applied Auth ConfigMap with kubectl'
